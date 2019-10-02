@@ -1,0 +1,505 @@
+---
+title: "Cluster-specific Competitiveness"
+author: "Hope Johnson"
+date: "9/23/2019"
+output: html_document
+---
+
+```{r include = FALSE}
+library(tidyverse)
+library(readxl)
+library(WriteXLS)
+```
+
+## Set up
+
+Setting up the data to read in.
+```{r}
+path <- file.path("/Users", "hopecj", "projects", "NC", "2019redraw")
+in_file <- file.path(path, "county cluster (in-file).xlsx")
+house_in <- read_xlsx(in_file, sheet = 3)
+senate_in <- read_xlsx(in_file, sheet = 2)
+
+house_amended <- read_csv(file.path(path, "amended913-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_amended" = wins,
+        "D_voteshare_amended" = `D Voteshare`,
+        "R_voteshare_amended" = R_voteshare)
+
+
+house_2018_pred <- read_csv(file.path(path, "pred_2018-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_pred_2018" = wins,
+        "D_voteshare_pred_2018" = `D Voteshare`,
+        "R_voteshare_pred_2018" = R_voteshare)
+
+house_basemap <- read_csv(file.path(path, "basemap-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_basemap" = wins,
+        "D_voteshare_basemap" = `D Voteshare`,
+        "R_voteshare_basemap" = R_voteshare)
+
+senate_amended <- read_csv(file.path(path, "2019redraw_Senate", "amended-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_amended" = wins,
+        "D_voteshare_amended" = `D Voteshare`,
+        "R_voteshare_amended" = R_voteshare)
+
+
+senate_2018_pred <- read_csv(file.path(path, "2019redraw_Senate", "preds_2018-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_pred_2018" = wins,
+        "D_voteshare_pred_2018" = `D Voteshare`,
+        "R_voteshare_pred_2018" = R_voteshare)
+
+senate_basemap <- read_csv(file.path(path, "2019redraw_Senate", "basemap-for-metrics.csv")) %>%
+  mutate(wins = ifelse(Party == "R", `R_voteshare`, `D Voteshare`)) %>%
+  select(District, 
+        "wins_basemap" = wins,
+        "D_voteshare_basemap" = `D Voteshare`,
+        "R_voteshare_basemap" = R_voteshare)
+```
+
+Merge the raw data that I set up with output from PlanScore.
+```{r}
+merged_house <- merge(house_in, house_amended, by.x = "districts_included", by.y = "District")
+intermed_house <- merge(merged_house, house_basemap, by.x = "districts_included", by.y = "District")
+house_final <- merge(intermed_house, house_2018_pred, by.x = "districts_included", by.y = "District")
+
+merged_senate <-merge(senate_in, senate_amended, by.x = "districts_included", by.y = "District")
+intermed_senate <- merge(merged_senate, senate_basemap, by.x = "districts_included", by.y = "District")
+senate_final <- merge(intermed_senate, senate_2018_pred, by.x = "districts_included", by.y = "District")
+```
+
+
+## Calculate cluster-specific averages
+
+```{r}
+house_1 <- house_final %>%
+  group_by(cluster) %>%
+  summarise(`Estimated average win - 2018 map` = mean(wins_pred_2018),
+            `Estimated average win - proposed redraw` = mean(wins_amended)) 
+
+house_2 <- house_final %>%
+  filter(D_voteshare_pred_2018 > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg D wins - 2018 map` = mean(D_voteshare_pred_2018, na.rm = TRUE))
+
+house_3 <- house_final %>%
+  filter(D_voteshare_amended > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg D wins - proposed redraw` = mean(D_voteshare_amended))
+         
+house_4 <- house_final %>%
+  filter(R_voteshare_pred_2018 > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg R wins - 2018 map` = mean(R_voteshare_pred_2018))
+
+
+house_5 <- house_final %>%
+  filter(R_voteshare_amended > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg R wins - proposed redraw` = mean(R_voteshare_amended))
+            
+out_house <- house_1 %>% left_join(house_2) %>%
+  left_join(house_3) %>% left_join(house_4) %>%
+  left_join(house_5)
+```
+
+
+```{r dont-include}
+out_house_extended <- house_final %>%
+  group_by(cluster) %>%
+  summarise(`Estimated average win - 2018 map` = mean(D_voteshare_pred_2018),
+            `Estimated average win - proposed redraw` = mean(D_voteshare_amended),
+            `SD - 2018 map` = sd(D_voteshare_pred_2018),
+            `SD - proposed redraw` = sd(D_voteshare_amended),
+            `min - 2018 map` = min(D_voteshare_pred_2018),
+            `min - proposed redraw` = min(D_voteshare_amended),
+            `max - 2018 map` = max(D_voteshare_pred_2018),
+            `max - proposed redraw` = max(D_voteshare_amended),
+            `IQR - 2018 map` = IQR(D_voteshare_pred_2018),
+            `IQR - proposed redraw` = IQR(D_voteshare_amended))
+out_house_extended
+```
+
+
+
+````{r}
+senate_1 <- senate_final %>%
+  group_by(cluster) %>%
+  summarise(`Estimated average win - 2018 map` = mean(wins_pred_2018),
+            `Estimated average win - proposed redraw` = mean(wins_amended)) 
+
+senate_2 <- senate_final %>%
+  filter(D_voteshare_pred_2018 > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg D wins - 2018 map` = mean(D_voteshare_pred_2018, na.rm = TRUE))
+
+senate_3 <- senate_final %>%
+  filter(D_voteshare_amended > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg D wins - proposed redraw` = mean(D_voteshare_amended))
+         
+senate_4 <- senate_final %>%
+  filter(R_voteshare_pred_2018 > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg R wins - 2018 map` = mean(R_voteshare_pred_2018))
+
+senate_5 <- senate_final %>%
+  filter(R_voteshare_amended > .5) %>%
+  group_by(cluster) %>%
+  summarise(`Avg R wins - proposed redraw` = mean(R_voteshare_amended))
+            
+out_senate <- senate_1 %>% left_join(senate_2) %>%
+  left_join(senate_3) %>% left_join(senate_4) %>%
+  left_join(senate_5)
+```
+
+## Analysis
+
+```{r}
+out_file <- file.path(path, "county cluster stats (updated).xlsx") 
+WriteXLS(c("out_house", "out_senate", "house_final", "senate_final"), ExcelFileName = out_file, SheetNames = c("House stats", "Senate stats", "House data", "Senate data"))
+```
+
+## Graphing - NC State House
+
+OLD - showing D Voteshare
+```{r}
+house_graph_dat <- house_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+  
+# ggplot(house_graph_dat, aes(x = districts_included, y = value, colour = factor(map))) +
+#   geom_point() + 
+#   facet_grid(cluster ~., scales = "free")
+
+dist_order <- house_graph_dat %>%
+  filter(map == "D_voteshare_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+house_graph_dat$ordered_districts = factor(house_graph_dat$districts_included, levels = dist_order)
+
+house_plot <- ggplot(house_graph_dat, 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  facet_wrap(vars(cluster), scales = "free_x") +
+  labs(x = "District number", 
+       y = "Democratic voteshare",
+       title = "NC House Map Changes")
+
+ggsave(file.path(path, "house_plot.png"), house_plot, width = 12, height = 8)
+
+house_plot_long <- ggplot(house_graph_dat, 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  geom_hline(yintercept = .5) + 
+  # geom_ribbon(aes(ymin = .45, ymax = .55), fill = "grey70") + # not working how I want it to!
+  facet_grid(.~cluster , scales = "free", space = "free") +
+  labs(x = "District number", 
+       y = "Democratic voteshare",
+       title = "NC House Map Changes") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("D_voteshare_amended"="orange", 
+                                   "D_voteshare_basemap"="green", 
+                                   "D_voteshare_pred_2018"="blue"))
+
+ggsave(file.path(path, "house_plot_long.png"), house_plot_long, width = 20, height = 8)
+```
+
+NEW - showing average wins
+
+```{r}
+house_graph_dat <- house_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+  
+# ggplot(house_graph_dat, aes(x = districts_included, y = value, colour = factor(map))) +
+#   geom_point() + 
+#   facet_grid(cluster ~., scales = "free")
+
+dist_order <- house_graph_dat %>%
+  filter(map == "wins_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+house_graph_dat$ordered_districts = factor(house_graph_dat$districts_included, levels = dist_order)
+
+house_graph_dat$cluster <- ifelse(house_graph_dat$cluster == "Cabarrus-Davie-Montgomery-Richmond-Rowan-Stanly",
+                                  "Cabarrus-Davie-Montgomery-\nRichmond-Rowan-Stanly", house_graph_dat$cluster)
+
+house_plot <- house_graph_dat %>%
+  filter(map == "wins_amended" | map == "wins_basemap" | map == "wins_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 8)) +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Win Margins in Challenged County Clusters",
+       subtitle = "State House of Representatives") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("wins_amended"="orange", 
+                                   "wins_basemap"="green", 
+                                   "wins_pred_2018"="blue"))
+
+ggsave(file.path(path, "house_wins_plot.png"), house_plot, width = 12, height = 8)
+
+
+house_plot_long <- house_graph_dat %>%
+  filter(map == "wins_amended" | map == "wins_basemap" | map == "wins_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  # geom_ribbon(aes(ymin = .45, ymax = .55), fill = "grey70") + # not working how I want it to!
+  facet_grid(.~cluster , scales = "free", space = "free") +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "NC House Map Changes",
+       subtitle = "State House of Representatives") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("wins_amended"="orange", 
+                                   "wins_basemap"="green", 
+                                   "wins_pred_2018"="blue"))
+
+ggsave(file.path(path, "house_plot_long.png"), house_plot_long, width = 20, height = 8)
+```
+
+```{r}
+# HOUSE D VOTESHARE
+house_graph_dat <- house_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+
+write.csv(house_graph_dat, file.path(path, "house_data_for_graphing.csv"))
+  
+# ggplot(house_graph_dat, aes(x = districts_included, y = value, colour = factor(map))) +
+#   geom_point() + 
+#   facet_grid(cluster ~., scales = "free")
+
+dist_order <- house_graph_dat %>%
+  filter(map == "D_voteshare_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+house_graph_dat$ordered_districts = factor(house_graph_dat$districts_included, levels = dist_order)
+
+house_graph_dat$cluster <- ifelse(house_graph_dat$cluster == "Cabarrus-Davie-Montgomery-Richmond-Rowan-Stanly",
+                                  "Cabarrus-Davie-Montgomery-\nRichmond-Rowan-Stanly", house_graph_dat$cluster)
+
+house_plot <- house_graph_dat %>%
+  filter(map == "D_voteshare_amended" | map == "D_voteshare_basemap" | map == "D_voteshare_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 8)) +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Democratic Vote Share in Challenged County Clusters",
+       subtitle = "State House of Representatives") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("D_voteshare_amended"="orange", 
+                                   "D_voteshare_basemap"="green", 
+                                   "D_voteshare_pred_2018"="blue"))
+
+ggsave(file.path(path, "house_D_voteshare_plot.png"), house_plot, width = 12, height = 8)
+```
+
+```{r}
+# HOUSE R VOTESHARE
+house_graph_dat <- house_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+  
+# ggplot(house_graph_dat, aes(x = districts_included, y = value, colour = factor(map))) +
+#   geom_point() + 
+#   facet_grid(cluster ~., scales = "free")
+
+dist_order <- house_graph_dat %>%
+  filter(map == "R_voteshare_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+house_graph_dat$ordered_districts = factor(house_graph_dat$districts_included, levels = dist_order)
+
+house_graph_dat$cluster <- ifelse(house_graph_dat$cluster == "Cabarrus-Davie-Montgomery-Richmond-Rowan-Stanly",
+                                  "Cabarrus-Davie-Montgomery-\nRichmond-Rowan-Stanly", house_graph_dat$cluster)
+
+house_plot <- house_graph_dat %>%
+  filter(map == "R_voteshare_amended" | map == "R_voteshare_basemap" | map == "R_voteshare_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 8)) +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Republican Vote Share in Challenged County Clusters",
+       subtitle = "State House of Representatives") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("R_voteshare_amended"="orange", 
+                                   "R_voteshare_basemap"="green", 
+                                   "R_voteshare_pred_2018"="blue"))
+
+ggsave(file.path(path, "house_R_voteshare_plot.png"), house_plot, width = 12, height = 8)
+```
+
+## Graphing - NC State Senate
+
+```{r}
+senate_graph_dat <- senate_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+
+write.csv(senate_graph_dat, file.path(path, "senate_data_for_graphing.csv"))
+
+
+dist_order <- senate_graph_dat %>%
+  filter(map == "wins_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+senate_graph_dat$ordered_districts = factor(senate_graph_dat$districts_included, levels = dist_order)
+
+senate_plot_long <- senate_graph_dat %>%
+  filter(map == "wins_amended" | map == "wins_basemap" | map == "wins_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  # geom_ribbon(aes(ymin = .45, ymax = .55), fill = "grey70") + # not working how I want it to!
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 12)) +
+  # facet_grid(.~cluster , scales = "free", space = "free") +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Win Margins in Challenged County Clusters",
+       subtitle = "State Senate") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("wins_amended"="orange", 
+                                   "wins_basemap"="green", 
+                                   "wins_pred_2018"="blue"))
+
+ggsave(file.path(path, "senate_wins_plot.png"), senate_plot_long, width = 12, height = 8)
+```
+
+
+```{r}
+# SENATE D VOTESHARE
+senate_graph_dat <- senate_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+
+dist_order <- senate_graph_dat %>%
+  filter(map == "D_voteshare_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+senate_graph_dat$ordered_districts = factor(senate_graph_dat$districts_included, levels = dist_order)
+
+senate_plot_long <- senate_graph_dat %>%
+  filter(map == "D_voteshare_amended" | map == "D_voteshare_basemap" | map == "D_voteshare_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  # geom_ribbon(aes(ymin = .45, ymax = .55), fill = "grey70") + # not working how I want it to!
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 12)) +
+  # facet_grid(.~cluster , scales = "free", space = "free") +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Democratic Vote Share in Challenged County Clusters",
+       subtitle = "State Senate") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("D_voteshare_amended"="orange", 
+                                   "D_voteshare_basemap"="green", 
+                                   "D_voteshare_pred_2018"="blue"))
+
+ggsave(file.path(path, "senate_D_voteshare_plot.png"), senate_plot_long, width = 12, height = 8)
+```
+
+```{r}
+# SENATE R VOTESHARE
+senate_graph_dat <- senate_final %>%
+  select(-Notes) %>%
+  gather(map, value, -c(districts_included, cluster))
+
+dist_order <- senate_graph_dat %>%
+  filter(map == "R_voteshare_amended") %>%
+  group_by(cluster) %>%
+  arrange(cluster, value) %>%
+  pull(districts_included)
+
+senate_graph_dat$ordered_districts = factor(senate_graph_dat$districts_included, levels = dist_order)
+
+senate_plot_long <- senate_graph_dat %>%
+  filter(map == "R_voteshare_amended" | map == "R_voteshare_basemap" | map == "R_voteshare_pred_2018") %>%
+  ggplot(., 
+       aes(x = ordered_districts, 
+           y = value, 
+           colour = factor(map))) +
+  geom_point() +
+  # geom_ribbon(aes(ymin = .45, ymax = .55), fill = "grey70") + # not working how I want it to!
+  facet_wrap(vars(cluster), scales = "free_x", labeller = label_wrap_gen(width = 12)) +
+  # facet_grid(.~cluster , scales = "free", space = "free") +
+  labs(x = "District number", 
+       y = "Win margin",
+       title = "North Carolina Republican Vote Share in Challenged County Clusters",
+       subtitle = "State Senate") + 
+  scale_color_manual(name="Map", 
+                        labels = c("Amended", 
+                                   "Basemap", 
+                                   "2018 (predicted)"), 
+                        values = c("R_voteshare_amended"="orange", 
+                                   "R_voteshare_basemap"="green", 
+                                   "R_voteshare_pred_2018"="blue"))
+
+ggsave(file.path(path, "senate_R_voteshare_plot.png"), senate_plot_long, width = 12, height = 8)
+```
+
